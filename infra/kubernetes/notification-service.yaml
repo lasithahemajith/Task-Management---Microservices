@@ -1,0 +1,96 @@
+---
+# Notification Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: devtask
+  labels:
+    app: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: devtask/notification-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3003
+          env:
+            - name: PORT
+              value: "3003"
+            - name: MYSQL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_HOST
+            - name: MYSQL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_PORT
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: devtask-secrets
+                  key: MYSQL_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: devtask-secrets
+                  key: JWT_SECRET
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: KAFKA_BROKERS
+            - name: KAFKA_CLIENT_ID
+              value: "notification-service"
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: LOG_LEVEL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+---
+# Notification Service – ClusterIP
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: devtask
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - port: 3003
+      targetPort: 3003

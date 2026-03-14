@@ -1,0 +1,231 @@
+# ---------------------------------------------------------------------------
+# DevTask – Microservice Task Manager
+# Run: docker compose up --build
+# Frontend: http://localhost:5173   API Gateway: http://localhost:3000
+# ---------------------------------------------------------------------------
+
+networks:
+  devtask-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+
+services:
+
+  # ─── Infrastructure ───────────────────────────────────────────────────────
+
+  mysql:
+    image: mysql:8.0
+    container_name: devtask-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE:      ${MYSQL_DATABASE:-devtask_db}
+      MYSQL_USER:          ${MYSQL_USER:-devtask}
+      MYSQL_PASSWORD:      ${MYSQL_PASSWORD:-devtask_password}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infra/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: devtask-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: devtask-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME:   2000
+    networks:
+      - devtask-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: devtask-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID:                        1
+      KAFKA_ZOOKEEPER_CONNECT:                zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS:             PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP:   PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME:       PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE:        "true"
+    ports:
+      - "29092:29092"
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ─── Backend Services ─────────────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: devtask-auth
+    restart: unless-stopped
+    environment:
+      PORT:           3001
+      MYSQL_HOST:     mysql
+      MYSQL_PORT:     3306
+      MYSQL_USER:     ${MYSQL_USER:-devtask}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devtask_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-devtask_db}
+      JWT_SECRET:     ${JWT_SECRET:-supersecret_change_in_production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      LOG_LEVEL:      ${LOG_LEVEL:-info}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  task-service:
+    build:
+      context: .
+      dockerfile: services/task-service/Dockerfile
+    container_name: devtask-tasks
+    restart: unless-stopped
+    environment:
+      PORT:             3002
+      MYSQL_HOST:       mysql
+      MYSQL_PORT:       3306
+      MYSQL_USER:       ${MYSQL_USER:-devtask}
+      MYSQL_PASSWORD:   ${MYSQL_PASSWORD:-devtask_password}
+      MYSQL_DATABASE:   ${MYSQL_DATABASE:-devtask_db}
+      JWT_SECRET:       ${JWT_SECRET:-supersecret_change_in_production}
+      KAFKA_BROKERS:    kafka:9092
+      KAFKA_CLIENT_ID:  task-service
+      LOG_LEVEL:        ${LOG_LEVEL:-info}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: devtask-notifications
+    restart: unless-stopped
+    environment:
+      PORT:             3003
+      MYSQL_HOST:       mysql
+      MYSQL_PORT:       3306
+      MYSQL_USER:       ${MYSQL_USER:-devtask}
+      MYSQL_PASSWORD:   ${MYSQL_PASSWORD:-devtask_password}
+      MYSQL_DATABASE:   ${MYSQL_DATABASE:-devtask_db}
+      JWT_SECRET:       ${JWT_SECRET:-supersecret_change_in_production}
+      KAFKA_BROKERS:    kafka:9092
+      KAFKA_CLIENT_ID:  notification-service
+      LOG_LEVEL:        ${LOG_LEVEL:-info}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: devtask-gateway
+    restart: unless-stopped
+    environment:
+      PORT:                     3000
+      AUTH_SERVICE_URL:         http://auth-service:3001
+      TASK_SERVICE_URL:         http://task-service:3002
+      NOTIFICATION_SERVICE_URL: http://notification-service:3003
+      CORS_ORIGIN:              ${CORS_ORIGIN:-*}
+      LOG_LEVEL:                ${LOG_LEVEL:-info}
+    ports:
+      - "3000:3000"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      task-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    networks:
+      - devtask-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: devtask-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    ports:
+      - "5173:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - devtask-net

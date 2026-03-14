@@ -1,0 +1,62 @@
+# Default values for the devtask Helm chart.
+# Override with: helm install devtask ./infra/helm/devtask -f my-values.yaml
+
+namespace: devtask
+
+image:
+  registry: ""        # e.g. "docker.io/youruser/"
+  pullPolicy: IfNotPresent
+  tag: latest
+
+mysql:
+  enabled: true
+  image: mysql:8.0
+  database: devtask_db
+  user: devtask
+  # Set these via --set or a sealed secret in production
+  password: devtask_password
+  rootPassword: root_password
+  storage: 2Gi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+
+kafka:
+  enabled: true
+  image: confluentinc/cp-kafka:7.5.0
+  zookeeperImage: confluentinc/cp-zookeeper:7.5.0
+
+jwt:
+  secret: supersecret_change_in_production
+  expiresIn: 24h
+
+logLevel: info
+
+services:
+  authService:
+    replicas: 1
+    port: 3001
+  taskService:
+    replicas: 1
+    port: 3002
+  notificationService:
+    replicas: 1
+    port: 3003
+  apiGateway:
+    replicas: 1
+    port: 3000
+    service:
+      type: NodePort
+      nodePort: 30000
+  frontend:
+    replicas: 1
+    port: 80
+    service:
+      type: NodePort
+      nodePort: 30001
+
+ingress:
+  enabled: true
+  className: nginx
+  host: devtask.local

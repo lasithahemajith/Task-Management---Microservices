@@ -1,0 +1,49 @@
+---
+# Ingress – routes external traffic into the cluster
+# Requires an Ingress controller (e.g. nginx-ingress on Minikube/Kind)
+#
+# Minikube: minikube addons enable ingress
+# Kind:     kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+#
+# Add to /etc/hosts:  127.0.0.1  devtask.local
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devtask-ingress
+  namespace: devtask
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: devtask.local
+      http:
+        paths:
+          - path: /auth(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 3000
+          - path: /tasks(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 3000
+          - path: /notifications(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 3000
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

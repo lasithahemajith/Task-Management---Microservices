@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devtask-config
+  namespace: {{ .Values.namespace }}
+data:
+  MYSQL_HOST:               "mysql"
+  MYSQL_PORT:               "3306"
+  MYSQL_DATABASE:           {{ .Values.mysql.database | quote }}
+  MYSQL_USER:               {{ .Values.mysql.user | quote }}
+  KAFKA_BROKERS:            "kafka:9092"
+  REDIS_HOST:               "redis"
+  REDIS_PORT:               "6379"
+  LOG_LEVEL:                {{ .Values.logLevel | quote }}
+  JWT_EXPIRES_IN:           {{ .Values.jwt.expiresIn | quote }}
+  AUTH_SERVICE_URL:         "http://auth-service:{{ .Values.services.authService.port }}"
+  TASK_SERVICE_URL:         "http://task-service:{{ .Values.services.taskService.port }}"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:{{ .Values.services.notificationService.port }}"

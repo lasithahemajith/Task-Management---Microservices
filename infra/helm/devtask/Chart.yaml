@@ -1,0 +1,15 @@
+apiVersion: v2
+name: devtask
+description: DevTask – Microservice Task Manager Helm chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - microservices
+  - task-manager
+  - devops
+  - kafka
+  - kubernetes
+maintainers:
+  - name: DevTask Team
+home: https://github.com/lasithahemajith/Task-Management---Microservices

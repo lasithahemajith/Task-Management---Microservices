@@ -1,0 +1,96 @@
+---
+# Task Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-service
+  namespace: devtask
+  labels:
+    app: task-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task-service
+  template:
+    metadata:
+      labels:
+        app: task-service
+    spec:
+      containers:
+        - name: task-service
+          image: devtask/task-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3002
+          env:
+            - name: PORT
+              value: "3002"
+            - name: MYSQL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_HOST
+            - name: MYSQL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_PORT
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: devtask-secrets
+                  key: MYSQL_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: devtask-secrets
+                  key: JWT_SECRET
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: KAFKA_BROKERS
+            - name: KAFKA_CLIENT_ID
+              value: "task-service"
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: devtask-config
+                  key: LOG_LEVEL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+---
+# Task Service – ClusterIP
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-service
+  namespace: devtask
+spec:
+  selector:
+    app: task-service
+  ports:
+    - port: 3002
+      targetPort: 3002

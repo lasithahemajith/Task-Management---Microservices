@@ -1,0 +1,176 @@
+name: DevTask CI/CD
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_PREFIX: ${{ secrets.DOCKERHUB_USERNAME }}/devtask
+
+jobs:
+  # ─── Lint & Validate ───────────────────────────────────────────────────────
+  lint:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install auth-service deps
+        run: cd services/auth-service && npm install
+
+      - name: Install task-service deps
+        run: cd services/task-service && npm install
+
+      - name: Install notification-service deps
+        run: cd services/notification-service && npm install
+
+      - name: Install api-gateway deps
+        run: cd services/api-gateway && npm install
+
+      - name: Install frontend deps
+        run: cd frontend && npm install
+
+      - name: Validate docker-compose
+        run: docker compose config
+
+  # ─── Build & Push Docker Images ───────────────────────────────────────────
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: lint
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push auth-service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/auth-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-auth-service:latest
+            ${{ env.IMAGE_PREFIX }}-auth-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build & push task-service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/task-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-task-service:latest
+            ${{ env.IMAGE_PREFIX }}-task-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build & push notification-service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/notification-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-notification-service:latest
+            ${{ env.IMAGE_PREFIX }}-notification-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build & push api-gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/api-gateway/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-api-gateway:latest
+            ${{ env.IMAGE_PREFIX }}-api-gateway:${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-frontend:latest
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+  # ─── Deploy to Kubernetes ─────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f infra/kubernetes/namespace.yaml
+          kubectl apply -f infra/kubernetes/configmap.yaml
+          kubectl apply -f infra/kubernetes/secrets.yaml
+          kubectl apply -f infra/kubernetes/mysql.yaml
+          kubectl apply -f infra/kubernetes/redis.yaml
+          kubectl apply -f infra/kubernetes/kafka.yaml
+          kubectl apply -f infra/kubernetes/auth-service.yaml
+          kubectl apply -f infra/kubernetes/task-service.yaml
+          kubectl apply -f infra/kubernetes/notification-service.yaml
+          kubectl apply -f infra/kubernetes/api-gateway.yaml
+          kubectl apply -f infra/kubernetes/frontend.yaml
+          kubectl apply -f infra/kubernetes/ingress.yaml
+
+      - name: Update image tags
+        run: |
+          kubectl set image deployment/auth-service         auth-service=${{ env.IMAGE_PREFIX }}-auth-service:${{ github.sha }}         -n devtask
+          kubectl set image deployment/task-service         task-service=${{ env.IMAGE_PREFIX }}-task-service:${{ github.sha }}         -n devtask
+          kubectl set image deployment/notification-service notification-service=${{ env.IMAGE_PREFIX }}-notification-service:${{ github.sha }} -n devtask
+          kubectl set image deployment/api-gateway          api-gateway=${{ env.IMAGE_PREFIX }}-api-gateway:${{ github.sha }}          -n devtask
+          kubectl set image deployment/frontend             frontend=${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}             -n devtask
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/auth-service         -n devtask --timeout=120s
+          kubectl rollout status deployment/task-service         -n devtask --timeout=120s
+          kubectl rollout status deployment/notification-service -n devtask --timeout=120s
+          kubectl rollout status deployment/api-gateway          -n devtask --timeout=120s
+          kubectl rollout status deployment/frontend             -n devtask --timeout=120s

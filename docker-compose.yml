@@ -21,15 +21,15 @@ services:
     container_name: devtask-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
-      MYSQL_DATABASE:      ${MYSQL_DATABASE:-devtask_db}
-      MYSQL_USER:          ${MYSQL_USER:-devtask}
-      MYSQL_PASSWORD:      ${MYSQL_PASSWORD:-devtask_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE:      ${MYSQL_DATABASE:-taskManage}
+      MYSQL_USER:          ${MYSQL_USER:-devuser}
+      MYSQL_PASSWORD:      ${MYSQL_PASSWORD:-devuser}
     volumes:
       - mysql-data:/var/lib/mysql
       - ./infra/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "3306:3306"
+      - "3307:3306"
     networks:
       - devtask-net
     healthcheck:

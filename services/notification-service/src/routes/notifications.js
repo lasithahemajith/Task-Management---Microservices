@@ -18,7 +18,7 @@ const notifLimiter = rateLimit({
 });
 
 // GET /notifications
-router.get('/notifications', notifLimiter, authenticateToken, async (req, res) => {
+router.get('/', notifLimiter, authenticateToken, async (req, res) => {
   try {
     const notifications = await query(
       `SELECT id, user_id, message, event_type, task_id, created_at

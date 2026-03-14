@@ -23,7 +23,7 @@ const tasksLimiter = rateLimit({
 
 // POST /tasks
 router.post(
-  '/tasks',
+  '/',
   tasksLimiter,
   authenticateToken,
   [
@@ -55,7 +55,7 @@ router.post(
 );
 
 // GET /tasks
-router.get('/tasks', tasksLimiter, authenticateToken, async (req, res) => {
+router.get('/', tasksLimiter, authenticateToken, async (req, res) => {
   try {
     const tasks = await query(
       'SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC',
@@ -70,7 +70,7 @@ router.get('/tasks', tasksLimiter, authenticateToken, async (req, res) => {
 
 // GET /tasks/:id
 router.get(
-  '/tasks/:id',
+  '/:id',
   tasksLimiter,
   authenticateToken,
   [param('id').isInt({ min: 1 }).withMessage('Invalid task ID')],
@@ -94,7 +94,7 @@ router.get(
 
 // PUT /tasks/:id
 router.put(
-  '/tasks/:id',
+  '/:id',
   tasksLimiter,
   authenticateToken,
   [
@@ -143,7 +143,7 @@ router.put(
 
 // DELETE /tasks/:id
 router.delete(
-  '/tasks/:id',
+  '/:id',
   tasksLimiter,
   authenticateToken,
   [param('id').isInt({ min: 1 }).withMessage('Invalid task ID')],
